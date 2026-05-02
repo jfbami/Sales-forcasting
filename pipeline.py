@@ -37,7 +37,7 @@ np.random.seed(SEED)
 TUNE_FRAC = 0.15
 
 
-# ─── RMSLE Metric ────────────────────────────────────────────────────────────
+#RMSLE Metric
 def rmsle(y_true, y_pred):
     """Root Mean Squared Logarithmic Error (competition metric)."""
     y_pred = np.clip(y_pred, 0, None)
@@ -51,7 +51,7 @@ def neg_rmsle_scorer(y_true, y_pred):
 rmsle_scorer = make_scorer(neg_rmsle_scorer, greater_is_better=True)
 
 
-# ─── Data Loading ────────────────────────────────────────────────────────────
+#Data Loading
 def load_data():
     """Load and merge all datasets."""
     print("Loading data...")
@@ -392,7 +392,7 @@ def tune_and_train_svr(X_train, y_train, X_val, y_val):
     return model, scaler_full, best_params, score
 
 
-# ─── Main Pipeline ───────────────────────────────────────────────────────────
+#Main Pipeline
 def main():
     t_start = time.time()
 
@@ -424,7 +424,7 @@ def main():
     lgb_model, lgb_params, lgb_score = tune_and_train_lightgbm(X_train, y_train, X_val, y_val)
     svr_model, svr_scaler, svr_params, svr_score = tune_and_train_svr(X_train, y_train, X_val, y_val)
 
-    # ── Ensemble (inverse-RMSLE weights) ──
+    #Ensemble (inverse-RMSLE weights)
     scores = np.array([xgb_score, lgb_score, svr_score])
     inv_scores = 1.0 / scores
     weights = inv_scores / inv_scores.sum()
@@ -447,7 +447,7 @@ def main():
     ensemble_score = rmsle(y_val, val_ensemble)
     print(f"\n  ENSEMBLE Val RMSLE: {ensemble_score:.5f}")
 
-    # ── Retrain on ALL data for submission ──
+    #Retrain on ALL data
     print("\nRetraining on full data for submission...")
     all_mask = train_fe["date"] >= "2014-06-01"
     X_all = train_fe.loc[all_mask, FEATURE_COLS].fillna(-1)
@@ -470,8 +470,7 @@ def main():
     svr_final = LinearSVR(**svr_params, random_state=SEED, dual=True)
     svr_final.fit(X_all_sc, np.log1p(y_all))
 
-    # ── Generate Predictions ──
-    print("Generating predictions...")
+    # Generate Prediction
     pred_xgb = np.clip(xgb_final.predict(X_test), 0, None)
     pred_lgb = np.clip(lgb_final.predict(X_test), 0, None)
     pred_svr_log = svr_final.predict(svr_scaler_final.transform(X_test))
@@ -480,13 +479,13 @@ def main():
     final_pred = weights[0] * pred_xgb + weights[1] * pred_lgb + weights[2] * pred_svr
     final_pred = np.clip(final_pred, 0, None)
 
-    # ── Submission ──
+    #Submission
     submission = pd.DataFrame({"id": test_fe["id"].values, "sales": final_pred})
     submission = submission.sort_values("id").reset_index(drop=True)
     sub_path = os.path.join(OUTPUT_DIR, "submission.csv")
     submission.to_csv(sub_path, index=False)
 
-    # ── Feature Importance ──
+    #Feature Importance
     print("\nTop 20 Feature Importances (XGBoost):")
     importances = pd.Series(
         xgb_final.feature_importances_, index=FEATURE_COLS
@@ -496,12 +495,6 @@ def main():
     importances.to_csv(os.path.join(OUTPUT_DIR, "feature_importances.csv"))
 
     elapsed = time.time() - t_start
-    print(f"\n{'=' * 60}")
-    print(f"Pipeline complete in {elapsed / 60:.1f} minutes")
-    print(f"Submission: {os.path.abspath(sub_path)}")
-    print(f"Ensemble Val RMSLE: {ensemble_score:.5f}")
-    print(f"{'=' * 60}")
-
     return {
         "ensemble_val_rmsle": ensemble_score,
         "xgb_val_rmsle": xgb_score,
@@ -512,7 +505,5 @@ def main():
         "lgb_params": lgb_params,
         "svr_params": svr_params,
     }
-
-
 if __name__ == "__main__":
     results = main()
